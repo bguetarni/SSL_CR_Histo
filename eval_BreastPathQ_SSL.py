@@ -49,7 +49,7 @@ def train(args, model, classifier, train_loader, criterion, optimizer, epoch):
 
     end = time.time()
 
-    for batch_idx, (input1, target) in enumerate(tqdm(train_loader, disable=False, ncols=100)):
+    for batch_idx, (input1, target) in enumerate(tqdm(train_loader, disable=False, ncols=50)):
 
         # Get inputs and target
         input1, target = input1.float(), target.long()
@@ -117,7 +117,7 @@ def validate(args, model, classifier, val_loader, criterion, epoch):
 
         end = time.time()
 
-        for batch_idx, (input1, target) in enumerate(tqdm(val_loader, disable=False, ncols=100)):
+        for batch_idx, (input1, target) in enumerate(tqdm(val_loader, disable=False, ncols=50)):
 
             # Get inputs and target
             input1, target = input1.float(), target.long()
@@ -169,7 +169,7 @@ def test(args, model, classifier, criterion, test_loader):
 
         end = time.time()
 
-        for batch_idx, (input, targetA, targetB) in enumerate(tqdm(test_loader, disable=False, ncols=100)):
+        for batch_idx, (input, targetA, targetB) in enumerate(tqdm(test_loader, disable=False, ncols=50)):
 
             # Get inputs and target
             input, targetA, targetB = input.float(), targetA.float(), targetB.float()
@@ -231,7 +231,7 @@ def main(args):
         train_dataset, val_dataset = load_dataset(args, TRAIN_PARAMS)
 
         # Train set
-        train_transforms = Compose([])
+        train_transforms = None
         train_dataset = DatasetBreastPathQ_Supervised_train(train_dataset, args.image_size, transform=train_transforms)
 
         # Validation set

@@ -367,14 +367,18 @@ def parse_args(script):
     parser.add_argument('--labeled_train', default=0.1, type=float, help='portion of the train data with labels - 1(full), 0.1/0.25/0.5')
     parser.add_argument('--num_classes', type=int, required=True, help='# of classes.')
     parser.add_argument('--name', type=str, required=True, help='name of the model')
+    parser.add_argument('--gpu', required=True, help='GPU id to use.')
+
+    parser.add_argument('--model_save_pth', type=str,
+                        required=True,
+                        help='path to save consistency trained model')
 
     # Tiling parameters
     parser.add_argument('--image_size', required=True, type=int, help='patch size width')
     parser.add_argument('--labels', default=None, type=str, help='path to labels CSV file')
 
-    parser.add_argument('--print_freq', type=int, default=10, help='print frequency')
+    parser.add_argument('--print_freq', type=int, default=1000, help='print frequency')
     parser.add_argument('--save_freq', type=int, default=10, help='save frequency')
-    parser.add_argument('--gpu', required=True, help='GPU id to use.')
     parser.add_argument('--num_workers', type=int, default=8, help='num of workers to use.')
     parser.add_argument('--seed', type=int, default=42, help='seed for initializing training.')
 
@@ -389,13 +393,6 @@ def parse_args(script):
                         help='weight decay/weights regularizer for sgd. - 1e-4')
     parser.add_argument('--beta1', default=0.9, type=float, help='momentum for sgd, beta1 for adam.')
     parser.add_argument('--beta2', default=0.999, type=float, help=' beta2 for adam.')
-
-    parser.add_argument('--model_save_pth', type=str,
-                        required=True, help='path to save consistency trained model')
-    
-    parser.add_argument('--save_loss', type=str,
-                        required=True,
-                        help='path to save loss and other performance metrics')
     
     if script == "SSL":
         parser.add_argument('--modules', type=int, default=0, help='which modules to freeze for fine-tuning the pretrained model. (full-finetune(0), fine-tune only FC layer (60) - Resnet18')

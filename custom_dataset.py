@@ -10,20 +10,6 @@ from PIL import Image
 from albumentations import Compose, Rotate, CenterCrop, RandomScale, Resize, RandomCrop
 from models.randaugment import RandAugment
 
-"""
-############################  OPENSLIDE  #################################
-# The path can also be read from a config file, etc.
-OPENSLIDE_PATH = r'C:\Users\bilel.guetarni\openslide-win64-20220811\bin'
-
-if hasattr(os, 'add_dll_directory'):
-    # Python >= 3.8 on Windows
-    with os.add_dll_directory(OPENSLIDE_PATH):
-        import openslide
-else:
-    import openslide
-##########################################################################
-"""
-
 class DatasetBreastPathQ_Supervised_train:
 
     def __init__(self, datalist, image_size, transform=None, maxsize=100000):
@@ -32,7 +18,7 @@ class DatasetBreastPathQ_Supervised_train:
         BreastPathQ dataset: supervised fine-tuning on downstream task
         """
 
-        self.datalist = datalist
+        self.datalist = datalist[:10]
         self.image_size = image_size
         self.transform = transform
 
@@ -119,7 +105,7 @@ class DatasetBreastPathQ_SSLtrain(Dataset):
 
         self.image_size = image_size
         self.transform = transform
-        self.datalist = datalist
+        self.datalist = datalist[:10]
         
         if len(self.datalist) > maxsize:
             self.datalist = random.sample(self.datalist, maxsize)
