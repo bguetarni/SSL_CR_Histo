@@ -13,7 +13,6 @@ class Classifier(nn.Module):
             nn.Linear(in_features, 128),
             nn.ReLU(True),
             nn.Linear(128, num_classes))
-        print(self.classifier)
 
     def forward(self, x):
         score = self.classifier(x)
@@ -32,7 +31,6 @@ class TripletNet(nn.Module):
             model = models.resnet18(pretrained=False)
             model.fc = torch.nn.Sequential()
             self.model = model
-            print(self.model)
             self.fc = nn.Sequential(nn.Linear(512*2, 512),
                                     nn.ReLU(True), nn.Linear(512, 256))
 
@@ -40,7 +38,6 @@ class TripletNet(nn.Module):
             model = models.resnet50(pretrained=False)
             model.fc = torch.nn.Sequential()
             self.model = model
-            print(self.model)
             self.fc = nn.Sequential(nn.Linear(2048*2, 1024),
                                     nn.ReLU(True), nn.Linear(1024, 512))
 
@@ -77,7 +74,6 @@ class TripletNet_Finetune(nn.Module):
             model = models.resnet18(pretrained=False)
             model.fc = torch.nn.Sequential()
             self.model = model
-            print(self.model)
             self.fc = nn.Sequential(nn.Linear(512*2, 512),
                                      nn.ReLU(True), nn.Linear(512, 256))
         else:

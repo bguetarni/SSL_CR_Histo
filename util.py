@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 from skimage import color
 from skimage.color import rgb2hed
@@ -347,3 +348,83 @@ class Formatter(object):
             json.dump(json_dict, f, indent=1)
 
 ###################################
+
+
+def parse_args(script):
+    """
+    script = SSL / SSL_CR
+    """
+    assert script in ["SSL", "SSL_CR"], "argument script must be one of [SSL, SSL_CR]"
+
+    parser = argparse.ArgumentParser('Argument for BreastPathQ - Consistency training/Evaluation')
+
+    parser.add_argument('--dataset', type=str, required=True, choices=["chulille", "dlbclmorph", "bci"])
+    parser.add_argument('--fold', type=str, default=None, help='fold to use as test')
+    parser.add_argument('--train_image_pth', required=True)
+    parser.add_argument('--val_image_pth', default=None)
+    parser.add_argument('--test_image_pth', default=None)
+    parser.add_argument('--validation_split', default=0.2, type=float, help='portion of the data that will be used for validation')
+    parser.add_argument('--labeled_train', default=0.1, type=float, help='portion of the train data with labels - 1(full), 0.1/0.25/0.5')
+    parser.add_argument('--num_classes', type=int, required=True, help='# of classes.')
+    parser.add_argument('--name', type=str, required=True, help='name of the model')
+
+    # Tiling parameters
+    parser.add_argument('--image_size', required=True, type=int, help='patch size width')
+    parser.add_argument('--labels', default=None, type=str, help='path to labels CSV file')
+
+    parser.add_argument('--print_freq', type=int, default=10, help='print frequency')
+    parser.add_argument('--save_freq', type=int, default=10, help='save frequency')
+    parser.add_argument('--gpu', required=True, help='GPU id to use.')
+    parser.add_argument('--num_workers', type=int, default=8, help='num of workers to use.')
+    parser.add_argument('--seed', type=int, default=42, help='seed for initializing training.')
+
+    # model definition
+    parser.add_argument('--model', type=str, default='resnet18', help='choice of network architecture.')
+    parser.add_argument('--mode', type=str, default='fine-tuning', help='fine-tuning/evaluation')
+    parser.add_argument('--num_epoch', type=int, default=90, help='epochs to train for.')
+    parser.add_argument('--batch_size', type=int, default=4, help='batch_size - 48/64.')
+
+    parser.add_argument('--lr', default=1e-4, type=float, help='learning rate. - 1e-4(Adam)')
+    parser.add_argument('--weight_decay', default=1e-4, type=float,
+                        help='weight decay/weights regularizer for sgd. - 1e-4')
+    parser.add_argument('--beta1', default=0.9, type=float, help='momentum for sgd, beta1 for adam.')
+    parser.add_argument('--beta2', default=0.999, type=float, help=' beta2 for adam.')
+
+    parser.add_argument('--model_save_pth', type=str,
+                        required=True, help='path to save consistency trained model')
+    
+    parser.add_argument('--save_loss', type=str,
+                        required=True,
+                        help='path to save loss and other performance metrics')
+    
+    if script == "SSL":
+        parser.add_argument('--modules', type=int, default=0, help='which modules to freeze for fine-tuning the pretrained model. (full-finetune(0), fine-tune only FC layer (60) - Resnet18')
+        
+        parser.add_argument('--model_path', type=str,
+                            required=True,
+                            help='path to load self-supervised pretrained model')
+        
+        parser.add_argument('--finetune_model_path', type=str,
+                            default='/home/srinidhi/Research/Code/SSL_Resolution/Save_Results/',
+                            help='path to load fine-tuned model for evaluation (test)')
+    else:
+        parser.add_argument('--modules_teacher', type=int, default=64,
+                            help='which modules to freeze for the fine-tuned teacher model. (full-finetune(0), fine-tune only FC layer (60). Full_network(64) - Resnet18')
+        
+        parser.add_argument('--modules_student', type=int, default=60,
+                            help='which modules to freeze for fine-tuning the student model. (full-finetune(0), fine-tune only FC layer (60) - Resnet18')
+        
+        parser.add_argument('--mu', default=7, type=int, help='coefficient of unlabeled batch size - 7')
+        parser.add_argument('--NAug', default=7, type=int, help='No of Augmentations for strong unlabeled data')
+        parser.add_argument('--lambda_u', default=1, type=float, help='coefficient of unlabeled loss')
+        
+        parser.add_argument('--model_path_finetune', type=str,
+                            required=True,
+                            help='path to load SSL fine-tuned model to intialize "Teacher and student network" for consistency training')
+        
+        parser.add_argument('--model_path_eval', type=str,
+                            default='/home/srinidhi/Research/Code/SSL_Resolution/Save_Results/Results/Cellularity/Results/',
+                            help='path to load consistency trained model')
+
+    args = parser.parse_args()
+    return args
