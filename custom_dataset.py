@@ -18,7 +18,7 @@ class DatasetBreastPathQ_Supervised_train:
         BreastPathQ dataset: supervised fine-tuning on downstream task
         """
 
-        self.datalist = datalist[:10]
+        self.datalist = datalist
         self.image_size = image_size
         self.transform = transform
 
@@ -105,7 +105,7 @@ class DatasetBreastPathQ_SSLtrain(Dataset):
 
         self.image_size = image_size
         self.transform = transform
-        self.datalist = datalist[:10]
+        self.datalist = datalist
         
         if len(self.datalist) > maxsize:
             self.datalist = random.sample(self.datalist, maxsize)

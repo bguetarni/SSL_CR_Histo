@@ -20,11 +20,11 @@ from torch.utils.data import Dataset, Subset
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
-from util import AverageMeter, plot_confusion_matrix
+from util import AverageMeter, plot_confusion_matrix, parse_args
 from collections import OrderedDict
 from torchvision import transforms, datasets
 
-from dataset import DatasetBreastPathQ_eval, DatasetBreastPathQ_SSLtrain, DatasetBreastPathQ_Supervised_train, TransformFix
+from custom_dataset import DatasetBreastPathQ_Supervised_train, DatasetBreastPathQ_eval, DatasetBreastPathQ_SSLtrain, TransformFix, load_dataset
 import models.net as net
 from albumentations import Compose
 from sklearn.metrics import multilabel_confusion_matrix
@@ -57,21 +57,22 @@ def train(args, model_teacher, model_student, classifier_teacher, classifier_stu
 
     end = time.time()
 
-    train_loader = zip(labeled_train_loader, unlabeled_train_loader)
+    train_loader = list(zip(labeled_train_loader, unlabeled_train_loader))
 
-    for batch_idx, (data_x, data_u) in enumerate(tqdm(train_loader, disable=False)):
+    for batch_idx, (data_x, data_u) in enumerate(tqdm(train_loader, disable=False, ncols=50)):
 
         # Get inputs and target
         inputs_x, targets_x = data_x
         inputs_u_w, inputs_u_s = data_u
 
-        inputs_x, inputs_u_w, inputs_u_s, targets_x = inputs_x.float(), inputs_u_w.float(), inputs_u_s.float(), targets_x.float()
+        inputs_x, inputs_u_w, inputs_u_s, targets_x = inputs_x.float(), inputs_u_w.float(), inputs_u_s.float(), targets_x.long()
 
         # Move the variables to Cuda
         inputs_x, inputs_u_w, inputs_u_s, targets_x = inputs_x.cuda(), inputs_u_w.cuda(), inputs_u_s.cuda(), targets_x.cuda()
 
         # Compute output
-        inputs_x = inputs_x.reshape(-1, 3, 256, 256)  #Reshape
+        inputs_x = inputs_x.reshape(-1, *inputs_x.shape[-3:])  #Reshape
+        targets_x = targets_x.reshape(-1)  #Reshape
 
        # Compute pseudolabels for weak_unlabeled images using the teacher model
         with torch.no_grad():
@@ -89,8 +90,8 @@ def train(args, model_teacher, model_student, classifier_teacher, classifier_stu
         del logits
 
         # Compute loss
-        Supervised_loss = F.mse_loss(logits_x, targets_x.view(-1, 1), reduction='mean')
-        Consistency_loss = F.mse_loss(logits_u_w, logits_u_s, reduction='mean')
+        Supervised_loss = F.cross_entropy(logits_x, targets_x, reduction='mean')
+        Consistency_loss = F.cross_entropy(logits_u_s, logits_u_w.argmax(dim=-1).long(), reduction='mean')
 
         final_loss = Supervised_loss + args.lambda_u * Consistency_loss
 
@@ -142,10 +143,10 @@ def validate(args, model_student, classifier_student, val_loader, epoch):
 
         end = time.time()
 
-        for batch_idx, (input, target) in enumerate(tqdm(val_loader, disable=False)):
+        for batch_idx, (input, target) in enumerate(tqdm(val_loader, disable=False, ncols=50)):
 
             # Get inputs and target
-            input, target = input.float(), target.float()
+            input, target = input.float(), target.long()
 
             # Move the variables to Cuda
             input, target = input.cuda(), target.cuda()
@@ -154,7 +155,7 @@ def validate(args, model_student, classifier_student, val_loader, epoch):
             feats = model_student(input)
             output = classifier_student(feats)
 
-            loss = F.mse_loss(output, target.view(-1, 1), reduction='mean')
+            loss = F.cross_entropy(output, target, reduction='mean')
 
             # compute loss and accuracy ####################
             batch_size = target.size(0)
@@ -242,73 +243,10 @@ def test(args, model_student, classifier_student, test_loader):
     return final_outputs, final_feats, final_targetsA, final_targetsB
 
 
-def parse_args():
+def main(args):
 
-    parser = argparse.ArgumentParser('Argument for BreastPathQ - Consistency training/Evaluation')
-
-    parser.add_argument('--print_freq', type=int, default=10, help='print frequency')
-    parser.add_argument('--save_freq', type=int, default=10, help='save frequency')
-    parser.add_argument('--gpu', default='0', help='GPU id to use.')
-    parser.add_argument('--num_workers', type=int, default=8, help='num of workers to use.')
-    parser.add_argument('--seed', type=int, default=42, help='seed for initializing training.')
-
-    # model definition
-    parser.add_argument('--model', type=str, default='resnet18', help='choice of network architecture.')
-    parser.add_argument('--mode', type=str, default='fine-tuning', help='fine-tuning/evaluation')
-    parser.add_argument('--modules_teacher', type=int, default=64,
-                        help='which modules to freeze for the fine-tuned teacher model. (full-finetune(0), fine-tune only FC layer (60). Full_network(64) - Resnet18')
-    parser.add_argument('--modules_student', type=int, default=60,
-                        help='which modules to freeze for fine-tuning the student model. (full-finetune(0), fine-tune only FC layer (60) - Resnet18')
-    parser.add_argument('--num_classes', type=int, default=1, help='# of classes.')
-    parser.add_argument('--num_epoch', type=int, default=90, help='epochs to train for.')
-    parser.add_argument('--batch_size', type=int, default=4, help='batch_size - 48/64.')
-    parser.add_argument('--mu', default=7, type=int, help='coefficient of unlabeled batch size - 7')
-    parser.add_argument('--NAug', default=7, type=int, help='No of Augmentations for strong unlabeled data')
-
-    parser.add_argument('--lr', default=0.0001, type=float, help='learning rate. - 1e-4(Adam)')
-    parser.add_argument('--weight_decay', default=1e-4, type=float,
-                        help='weight decay/weights regularizer for sgd. - 1e-4')
-    parser.add_argument('--beta1', default=0.9, type=float, help='momentum for sgd, beta1 for adam.')
-    parser.add_argument('--beta2', default=0.999, type=float, help=' beta2 for adam.')
-    parser.add_argument('--lambda_u', default=1, type=float, help='coefficient of unlabeled loss')
-
-    # Consistency training
-    parser.add_argument('--model_path_finetune', type=str,
-                        default='/home/csrinidhi/SSL_Eval/Save_Results/SSL/0.1/',
-                        help='path to load SSL fine-tuned model to intialize "Teacher and student network" for consistency training')
-    parser.add_argument('--model_save_pth', type=str,
-                        default='/home/srinidhi/Research/Code/SSL_Resolution/Save_Results/Results/Cellularity/Results/', help='path to save consistency trained model')
-    parser.add_argument('--save_loss', type=str,
-                        default='/home/srinidhi/Research/Code/SSL_Resolution/Save_Results/Results/Cellularity/Results/',
-                        help='path to save loss and other performance metrics')
-
-    # Testing
-    parser.add_argument('--model_path_eval', type=str,
-                        default='/home/srinidhi/Research/Code/SSL_Resolution/Save_Results/Results/Cellularity/Results/',
-                        help='path to load consistency trained model')
-
-    # Data paths
-    parser.add_argument('--train_image_pth',
-                        default='/home/srinidhi/Research/Data/Cellularity/Tumor_Cellularity_Compare/TrainSet/')
-    parser.add_argument('--test_image_pth',
-                        default='/home/srinidhi/Research/Data/Cellularity/Tumor_Cellularity_Compare/')
-    parser.add_argument('--validation_split', default=0.2, type=float,
-                        help='portion of the data that will be used for validation')
-    parser.add_argument('--labeled_train', default=0.1, type=float,
-                        help='portion of the train data with labels - 1(full), 0.1/0.25/0.5')
-
-    # Tiling parameters
-    parser.add_argument('--image_size', default=256, type=int, help='patch size width 256')
-
-    args = parser.parse_args()
-
-    return args
-
-
-def main():
-
-    # parse the args
-    args = parse_args()
+    model_save_pth = os.path.join(args.model_save_pth, args.name)
+    os.makedirs(model_save_pth, exist_ok=True)
 
     # Set the data loaders (train, val, test)
 
@@ -316,47 +254,32 @@ def main():
 
     if args.mode == 'fine-tuning':
 
+        train_dataset, val_dataset = load_dataset(args, TRAIN_PARAMS)
+
         # Train set
-        transform_train = transforms.Compose([])  # None
-        train_labeled_dataset = DatasetBreastPathQ_Supervised_train(args.train_image_pth, args.image_size, transform=transform_train)
-        train_unlabeled_dataset = DatasetBreastPathQ_SSLtrain(args.train_image_pth, transform=TransformFix(args.image_size, args.NAug))
+        transform_train = None
+        train_labeled_dataset = DatasetBreastPathQ_Supervised_train(train_dataset, args.image_size, transform=transform_train)
+        train_unlabeled_dataset = DatasetBreastPathQ_SSLtrain(train_dataset, args.image_size, transform=TransformFix(args.image_size, args.NAug))
 
         # Validation set
         transform_val = transforms.Compose([transforms.Resize(size=args.image_size)])
-        val_dataset = DatasetBreastPathQ_SSLtrain(args.train_image_pth, transform=transform_val)
-
-        # train and validation split
-        num_train = len(train_labeled_dataset.datalist)
-        indices = list(range(num_train))
-        split = int(np.floor(args.validation_split * num_train))
-        np.random.shuffle(indices)
-        train_idx, val_idx = indices[split:], indices[:split]
-
-        #### Semi-Supervised Split (10, 25, 50, 100)
-        labeled_train_idx = np.random.choice(train_idx, int(args.labeled_train * len(train_idx)))
-
-        unlabeled_train_sampler = SubsetRandomSampler(train_idx)
-        labeled_train_sampler = SubsetRandomSampler(labeled_train_idx)
-        val_sampler = SubsetRandomSampler(val_idx)
+        val_dataset = DatasetBreastPathQ_SSLtrain(val_dataset, args.image_size, transform=transform_val)
 
         # Data loaders
-        labeled_train_loader = torch.utils.data.DataLoader(train_labeled_dataset, batch_size=args.batch_size, sampler=labeled_train_sampler,
-                                                           shuffle=True if labeled_train_sampler is None else False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
+        labeled_train_loader = torch.utils.data.DataLoader(train_labeled_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
 
-        unlabeled_train_loader = torch.utils.data.DataLoader(train_unlabeled_dataset, batch_size=args.batch_size*args.mu, sampler=unlabeled_train_sampler,
-                                                             shuffle=True if unlabeled_train_sampler is None else False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
+        unlabeled_train_loader = torch.utils.data.DataLoader(train_unlabeled_dataset, batch_size=args.batch_size*args.mu, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
 
-        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, sampler=val_sampler,
-                                                 shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=False)
+        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=True, drop_last=False)
 
         # number of samples
-        num_label_data = len(labeled_train_sampler)
+        num_label_data = len(train_labeled_dataset)
         print('number of labeled training samples: {}'.format(num_label_data))
 
-        num_unlabel_data = len(unlabeled_train_sampler)
+        num_unlabel_data = len(train_unlabeled_dataset)
         print('number of unlabeled training samples: {}'.format(num_unlabel_data))
 
-        num_val_data = len(val_sampler)
+        num_val_data = len(val_dataset)
         print('number of validation samples: {}'.format(num_val_data))
 
     elif args.mode == 'evaluation':
@@ -486,7 +409,7 @@ def main():
     prev_best_val_loss = float('inf')
 
     # Start log (writing into XL sheet)
-    with open(os.path.join(args.save_loss, 'fine_tuned_results.csv'), 'w') as f:
+    with open(os.path.join(model_save_pth, 'fine_tuned_results.csv'), 'w') as f:
         f.write('epoch, train_loss, train_losses_x, train_losses_u, val_loss\n')
 
     # Routine
@@ -505,7 +428,7 @@ def main():
             val_losses = validate(args, model_student, classifier_student, val_loader, epoch)
 
             # Log results
-            with open(os.path.join(args.save_loss, 'fine_tuned_results.csv'), 'a') as f:
+            with open(os.path.join(model_save_pth, 'fine_tuned_results.csv'), 'a') as f:
                 f.write('%03d,%0.6f,%0.6f,%0.6f,%0.6f,\n' % ((epoch + 1), train_losses, train_losses_x, train_losses_u, val_losses))
 
             'adjust learning rate --- Note that step should be called after validate()'
@@ -530,7 +453,7 @@ def main():
                     'train_losses_x': train_losses_x,
                     'train_losses_u': train_losses_u,
                 }
-                torch.save(state, '{}/fine_CR_trained_model_{}.pt'.format(args.model_save_pth, epoch))
+                torch.save(state, os.path.join(model_save_pth, 'fine_CR_trained_model_{}.pt'.format(epoch)))
 
                 # help release GPU memory
                 del state
@@ -551,7 +474,7 @@ def main():
                     'train_losses_x': train_losses_x,
                     'train_losses_u': train_losses_u,
                 }
-                torch.save(state, '{}/best_CR_trained_model_{}.pt'.format(args.model_save_pth, epoch))
+                torch.save(state, os.path.join(model_save_pth, 'best_CR_trained_model_{}.pt'.format(epoch)))
                 prev_best_val_loss = val_losses
 
                 # help release GPU memory
@@ -649,7 +572,17 @@ def main():
 
 if __name__ == "__main__":
 
-    args = parse_args()
+    global TRAIN_PARAMS
+    TRAIN_PARAMS = dict(
+        # dictionnar to convert class name to label
+        class_to_label = {
+            "chulille": {'ABC': 1, 'GCB': 0},
+            "dlbclmorph": {'NGC': 1, 'GC': 0},
+            "bci": {'0': 0, '1+': 1, '2+': 2, '3+': 3},
+        },
+    )
+
+    args = parse_args("SSL_CR")
     print(vars(args))
 
     # Force the pytorch to create context on the specific device
@@ -663,4 +596,4 @@ if __name__ == "__main__":
             torch.cuda.manual_seed_all(args.seed)
 
     # Main function
-    main()
+    main(args)
