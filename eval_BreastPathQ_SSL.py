@@ -387,7 +387,7 @@ def main(args):
                     'epoch': epoch,
                     'train_loss': train_losses,
                 }
-                torch.save(state, os.path.join(model_save_pth, 'best_fine_tuned_model_{}.pt'.format(epoch)))
+                torch.save(state, os.path.join(model_save_pth, 'best_fine_tuned_model.pt'))
                 prev_best_val_loss = val_losses
 
                 # help release GPU memory
